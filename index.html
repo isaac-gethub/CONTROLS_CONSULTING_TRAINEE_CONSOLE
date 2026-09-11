@@ -181,8 +181,8 @@
     <div class="brand">SAP Controls Mastery<span>Unified Console · TIB Systems</span></div>
     <div class="who"><span id="who-email"></span><button onclick="doSignOut()">Sign out</button></div>
   </header>
-  <div class="mode-tabs" id="mode-tabs"></div>
-  <div class="course-tabs hidden" id="course-tabs"></div>
+  <div class="course-tabs" id="course-tabs"></div>
+  <div class="mode-tabs hidden" id="mode-tabs"></div>
   <main id="main-content"></main>
 </div>
 
@@ -406,18 +406,39 @@
   }
 </script>
 <script>
-  var MODES = [
-    { id: 'guide', label: 'Course Guide' },
-    { id: 'lab', label: 'Primary Lab' },
+  // Standalone tools that have no company/course dimension — they sit as
+  // top-level choices alongside the companies, not nested under them.
+  var STANDALONE_MODES = [
     { id: 'exam', label: 'Timed Exam' },
     { id: 'instructor', label: 'Instructor Demo' },
     { id: 'optional', label: 'Optional Lab' }
   ];
+  // The two modes that DO have a company dimension — these appear as the
+  // subordinate row once a company is selected.
+  var COURSE_MODES = [
+    { id: 'guide', label: 'Course Guide' },
+    { id: 'lab', label: 'Primary Lab' }
+  ];
 
-  function renderModeTabs(){
-    var wrap = document.getElementById('mode-tabs');
+  // Row 1 (primary): pick a company (which puts you in Guide/Lab context for
+  // that company) OR pick one of the standalone tools directly.
+  function renderCourseTabs(){
+    var wrap = document.getElementById('course-tabs');
     wrap.innerHTML = '';
-    MODES.forEach(function(m){
+    var inCourseContext = (currentMode === 'guide' || currentMode === 'lab');
+    COURSES.forEach(function(c){
+      var btn = document.createElement('button');
+      btn.textContent = c.company;
+      btn.className = (inCourseContext && c.course_id === currentCourse ? 'active' : '');
+      btn.onclick = function(){
+        currentCourse = c.course_id;
+        currentBook = null;
+        if(!inCourseContext) currentMode = 'guide';
+        render();
+      };
+      wrap.appendChild(btn);
+    });
+    STANDALONE_MODES.forEach(function(m){
       var btn = document.createElement('button');
       btn.textContent = m.label;
       btn.className = (m.id === currentMode ? 'active' : '');
@@ -426,26 +447,29 @@
     });
   }
 
-  function renderCourseTabs(){
-    var wrap = document.getElementById('course-tabs');
-    if(currentMode !== 'guide' && currentMode !== 'lab'){
+  // Row 2 (subordinate): Course Guide vs Primary Lab — only meaningful once
+  // a company is the active context, so it's hidden for the standalone tools.
+  function renderModeTabs(){
+    var wrap = document.getElementById('mode-tabs');
+    var inCourseContext = (currentMode === 'guide' || currentMode === 'lab');
+    if(!inCourseContext){
       wrap.classList.add('hidden');
       return;
     }
     wrap.classList.remove('hidden');
     wrap.innerHTML = '';
-    COURSES.forEach(function(c){
+    COURSE_MODES.forEach(function(m){
       var btn = document.createElement('button');
-      btn.textContent = c.company;
-      btn.className = (c.course_id === currentCourse ? 'active' : '');
-      btn.onclick = function(){ currentCourse = c.course_id; currentBook = null; render(); };
+      btn.textContent = m.label;
+      btn.className = (m.id === currentMode ? 'active' : '');
+      btn.onclick = function(){ currentMode = m.id; render(); };
       wrap.appendChild(btn);
     });
   }
 
   function render(){
-    renderModeTabs();
     renderCourseTabs();
+    renderModeTabs();
     var main = document.getElementById('main-content');
     main.innerHTML = '';
     window.scrollTo(0,0);
