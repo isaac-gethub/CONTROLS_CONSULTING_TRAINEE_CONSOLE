@@ -208,6 +208,26 @@
   var TRAINING_LABS = [];    // ctm_training_labs
   var TRAINING_META = null;  // ctm_training_meta
 
+  // Controls Theory (B0-B10) -- prerequisite track, Course 1 only.
+  // Content lives in ./theory/*.html (its own small app with its own
+  // session guard); this console only needs the module list and each
+  // learner's read/complete status from ctm_electives_progress so it can
+  // render tiles and status chips consistent with Foundations.
+  var THEORY_PROGRESS = {};  // module_id -> true, for course_id='scc'
+  var CONTROLS_THEORY_MODULES = [
+    { code: 'b0',  title: 'Primary Goals of SAP Controls & Compliance', blurb: 'Foundational reading \u2014 read this before B1.' },
+    { code: 'b1',  title: 'Risk Types',            blurb: 'Foundational risk categories in an SAP environment.' },
+    { code: 'b2',  title: 'Control Types',          blurb: 'Preventive, detective, and corrective controls.' },
+    { code: 'b3',  title: 'Control Nature',         blurb: 'Manual, automated, and IT-dependent manual controls.' },
+    { code: 'b4',  title: 'Why Controls Matter',    blurb: 'The business case for controls, in plain terms.' },
+    { code: 'b5',  title: 'Engagement Types',       blurb: 'How QA, advisory, and audit engagements differ.' },
+    { code: 'b6',  title: 'S/4HANA Lifecycle',      blurb: 'Where controls fit across the implementation lifecycle.' },
+    { code: 'b7',  title: 'Reading FD Documents',   blurb: 'Making sense of functional design documentation.' },
+    { code: 'b8',  title: 'Testing Phase',          blurb: 'Planning and executing control testing.' },
+    { code: 'b9',  title: 'AI in Controls',         blurb: 'Where AI helps \u2014 and where it still needs a human.' },
+    { code: 'b10', title: 'Practitioner Capstone',  blurb: 'Pulling the whole programme together.' }
+  ];
+
   function esc(s){ var d = document.createElement('div'); d.textContent = (s===null||s===undefined)?'':s; return d.innerHTML; }
   function showView(id){
     ['login','signup','forgot','reset','checking','noenroll'].forEach(function(v){
@@ -315,6 +335,17 @@
 
     userEmail = user.email;
     document.getElementById('who-email').textContent = userEmail;
+
+    // A Controls Theory page (./theory/*.html) bounces here with ?go=<url>
+    // when it finds no session -- once we've confirmed enrollment, send the
+    // learner straight back to the page they were trying to open instead of
+    // dropping them on the console's default view.
+    var goTarget = new URLSearchParams(window.location.search).get('go');
+    if(goTarget){
+      window.location.replace(goTarget);
+      return;
+    }
+
     ['login','signup','forgot','reset','checking','noenroll'].forEach(function(v){
       document.getElementById('view-' + v).classList.add('hidden');
     });
@@ -371,6 +402,19 @@
       var tmetaRes = await ctm.from('ctm_training_meta').select('*').eq('id', 1).maybeSingle();
       if(tmetaRes.error) throw tmetaRes.error;
       TRAINING_META = tmetaRes.data;
+
+      // Controls Theory progress lives in the elective's own progress table,
+      // keyed by course_id='scc' -- separate from ctm_unified_progress.
+      // Non-fatal if it fails: tiles just render as "Not started".
+      try{
+        var theoryRes = await ctm.from('ctm_electives_progress').select('module_id').eq('email', userEmail).eq('course_id', 'scc');
+        if(theoryRes.error) throw theoryRes.error;
+        THEORY_PROGRESS = {};
+        (theoryRes.data || []).forEach(function(row){ THEORY_PROGRESS[row.module_id] = true; });
+      }catch(e){
+        console.warn('Could not load Controls Theory progress:', e);
+        THEORY_PROGRESS = {};
+      }
 
     }catch(e){
       console.error('Failed to load content:', e);
@@ -484,6 +528,27 @@
     return COURSES.filter(function(c){ return c.course_id === courseId; })[0];
   }
 
+  // Controls Theory (B0-B10) -- soft prerequisite, Course 1 only. Shown
+  // ahead of Track 1 Foundations in both Guide and Lab views. These are
+  // real links out to the elective's own pages (./theory/*.html), not
+  // in-app SPA state, so they open in a new tab and rely on
+  // ctm_electives_progress (loaded into THEORY_PROGRESS) for status chips.
+  function controlsTheoryBlockHtml(){
+    var doneCount = 0;
+    CONTROLS_THEORY_MODULES.forEach(function(m){ if(THEORY_PROGRESS[m.code]) doneCount++; });
+    var html = '<div class="card"><h3 style="margin-top:0;color:var(--navy);">Track 0 &middot; Controls Theory ';
+    html += '<span style="font-weight:400;color:var(--muted);font-size:0.78rem;">&mdash; ' + doneCount + ' of ' + CONTROLS_THEORY_MODULES.length + ' read</span></h3>';
+    html += '<p style="font-size:0.85rem;color:var(--muted);">General SAP controls &amp; compliance theory, common to every engagement &mdash; recommended before Track 1 Foundations. Opens in a new tab; your progress syncs back here automatically.</p>';
+    CONTROLS_THEORY_MODULES.forEach(function(m){
+      var done = !!THEORY_PROGRESS[m.code];
+      html += '<a class="lab-card" href="./theory/' + m.code + '.html" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;">';
+      html += '<div><div class="l-title">' + m.code.toUpperCase() + ' &mdash; ' + esc(m.title) + '</div><div class="l-sub">' + esc(m.blurb) + '</div></div>';
+      html += '<span class="status-chip ' + (done ? 'done' : 'todo') + '">' + (done ? 'Complete' : 'Not started') + '</span></a>';
+    });
+    html += '</div>';
+    return html;
+  }
+
   // ================= COURSE GUIDE MODE =================
   function renderGuideMode(main){
     var course = courseMeta(currentCourse);
@@ -493,8 +558,12 @@
     var html = '<h2 class="page-title">' + esc(course.name) + '</h2>';
     html += '<p class="page-sub">' + esc(course.company) + ' &middot; Course Guide &mdash; summary view. Switch to Primary Lab for the full interactive walkthrough.</p>';
 
+    if(currentCourse === 'c1'){
+      html += controlsTheoryBlockHtml();
+    }
+
     if(founds.length){
-      html += '<div class="card"><h3 style="margin-top:0;color:var(--navy);">Track 0 &middot; Foundations</h3>';
+      html += '<div class="card"><h3 style="margin-top:0;color:var(--navy);">Track 1 &middot; Foundations</h3>';
       html += '<p style="font-size:0.85rem;color:var(--muted);">SAP navigation prerequisite &mdash; complete before Book 01.</p>';
       founds.forEach(function(m){
         html += '<div class="lab-card" onclick="openFoundationsModule(\'' + m.course_id + '\',' + m.module_number + ')">';
@@ -568,8 +637,12 @@
       html += '<div class="card"><div style="font-weight:700;margin-bottom:4px;">Progress: ' + doneCount + ' of ' + totalItems + ' complete</div>';
       html += '<div class="progress-bar"><div class="progress-fill" style="width:' + Math.round(doneCount/Math.max(totalItems,1)*100) + '%;"></div></div></div>';
 
+      if(currentCourse === 'c1'){
+        html += controlsTheoryBlockHtml();
+      }
+
       if(founds.length){
-        html += '<div class="card"><h3 style="margin-top:0;color:var(--navy);">Track 0 &middot; Foundations</h3>';
+        html += '<div class="card"><h3 style="margin-top:0;color:var(--navy);">Track 1 &middot; Foundations</h3>';
         founds.forEach(function(m){
           var key = currentCourse + '_found_' + m.module_number;
           var done = !!progress[key];
